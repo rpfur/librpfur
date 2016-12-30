@@ -1,0 +1,23 @@
+[package]
+name = "rpfur"
+version = "0.1.0"
+authors = ["Matheus Borella (DarkRyu550) <dark.ryu.550@gmail.com>"]
+
+
+[dependencies]
+log = "^0.3"    # Logging utility
+
+# Serialization and deserialization
+serde        = "^0.8"
+serde_derive = "^0.8" # Autogeneration
+bincode      = "^0.6" # Binary output format
+
+# Server utilities
+json = "^0.11"
+uuid = "^0.3"
+
+# For cryptography based on libsodium
+[dependencies.sodiumoxide]
+# TODO: Change back to the crates.io release once it receives Serde support
+# version = "^0.0.12"
+git = "https://github.com/dnaq/sodiumoxide"

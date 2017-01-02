@@ -6,6 +6,7 @@
 #![allow(unused_imports)]
 
 #[macro_use] extern crate log;
+#[macro_use] extern crate rand;
 #[macro_use] extern crate sodiumoxide;
 #[macro_use] extern crate serde_derive;
 #[macro_use] extern crate serde;
@@ -31,10 +32,100 @@ enum Request{
     }
 }
 
+/// Number of characters in the authorization token
+const TOKEN_LENGTH: usize = 32;
+
+use std::io;
+use rand::{Rng, OsRng};
+use std::sync::{Arc, Mutex};
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]
+struct Token([char; TOKEN_LENGTH]);
+impl Token{
+    /// Fills the contents of this token using a given Rng
+    fn _fill_by_rng<R: Rng>(&mut self, rng: &mut R){
+        let mut i = 0;
+        for character in rng.gen_ascii_chars().filter(|character| !character.is_uppercase()).take(TOKEN_LENGTH){
+            if i <= TOKEN_LENGTH{
+                self.0[i] = character;
+                i += 1;
+            }else{
+                return
+            }
+        }
+    }
+
+    /// Try to retrieve a cached instance of OsRng through the use of a singleton
+    ///
+    /// Deprecated: This funcion is most likely not really needed,
+    /// as creating a new OsRng for every generation secure, fast enough,
+    /// and simpler, however, note that, proven otherwise, this function
+    /// will return to active usage.
+    #[deprecated]
+    fn _rng() -> Option<Arc<Mutex<OsRng>>>{
+        use std::sync::{Once, ONCE_INIT};
+        static mut RNG: *const Arc<Mutex<OsRng>> = 0 as *const Arc<Mutex<OsRng>>;
+        static mut ONCE: Once = ONCE_INIT;
+        unsafe{
+            // Try creating a new OsRng once, and,
+            // in case it is successful, cache it for later calls
+            ONCE.call_once(||{
+                use std::mem;
+                if let Ok(rng) = OsRng::new(){
+                    RNG = mem::transmute(Box::new(Arc::new(Mutex::new(rng))));
+                }
+            });
+
+            // Return a copy of the Arc if it was generated successfuly
+            match RNG.is_null(){
+                false => Some((*RNG).clone()),
+                true  => None
+            }
+        }
+    }
+
+    pub fn generate() -> Result<Token, io::Error>{
+        // Create an Token to be filled later (using _fill_by_rng())
+        let mut token = Token([' '; TOKEN_LENGTH]);
+
+        // Try to use OsRng to generate the sequence, as recommended by the `rand`
+        // documentation, for the native algorythms that generate random numbers are specialized
+        // to generate number suitable for an encryption algorythm.
+        match OsRng::new(){
+            Ok(mut rng) => {
+                use std::ops::DerefMut;
+                token._fill_by_rng(&mut rng)
+            },
+            Err(what) => {
+                // We're now entering the Bone Zone!
+                // Reffer to Cargo.toml and the allow-unsafe-tokens feature for more
+                // information on why this is a terrible idea when we're talking about user safety.
+                if cfg!(feature = "allow-unsafe-tokens"){
+                    use rand::thread_rng;
+                    token._fill_by_rng(&mut thread_rng())
+                }else{
+                    // For real use cases it's better for the generation to fail
+                    // than to generate something that will end up being unsafe.
+                    return Err(what)
+                }
+            }
+        }
+
+        // Return the now filled token
+        Ok(token)
+    }
+}
+use std::fmt;
+impl fmt::Display for Token{
+    fn fmt(&self, target: &mut fmt::Formatter) -> fmt::Result{
+        use std::iter::FromIterator;
+        write!(target, "{}", self.0.iter().cloned().collect::<String>())
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 enum Response{
-    Connected{
-        server: String,
+    Connected{ server: String },
+    LoginSuccesful{
 
     }
 }
@@ -79,6 +170,48 @@ impl Fur{
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn token(){
+        // Number of threads to be spawn and tokens to be generated in every thread
+        const THREAD_COUNT: usize = 512;
+        const RESULT_COUNT: usize = 10;
+
+        // Generate a number of tokens simultaniously across different threads
+        let mut threads = Vec::new();
+        for i in 0..THREAD_COUNT{
+            use std::thread;
+            threads.push(thread::spawn(move || {
+                use super::Token;
+
+                let mut tokens = Vec::new();
+                for i in 0..RESULT_COUNT{
+                    tokens.push(Token::generate().unwrap())
+                }
+                tokens
+            }));
+
+            // Sleep a little
+            use std::time::Duration;
+            thread::sleep(Duration::new(0, 5000));
+        }
+
+        // Collect all the generated tokens
+        use std::iter;
+        let tokens = threads.into_iter()
+            .flat_map(|thread| thread.join().unwrap().into_iter())
+            .collect::<Vec<_>>();
+
+        // Make sure no pair of tokens match
+        let reference = tokens.clone();
+        let mut counter: usize = 0;
+        for token in tokens.iter(){
+            counter += 1;
+            for comparator in reference.iter().skip(counter){
+                assert!(token != comparator);
+            }
+        }
+    }
+
     #[test]
     fn connection_listener(){
         // Setup a verbose logger

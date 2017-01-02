@@ -5,7 +5,8 @@ authors = ["Matheus Borella (DarkRyu550) <dark.ryu.550@gmail.com>"]
 
 
 [dependencies]
-log = "^0.3"    # Logging utility
+log  = "^0.3" # Logging utility
+rand = "^0.3" # Random number generation
 
 # Serialization and deserialization
 serde        = "^0.8"
@@ -21,3 +22,20 @@ uuid = "^0.3"
 # TODO: Change back to the crates.io release once it receives Serde support
 # version = "^0.0.12"
 git = "https://github.com/dnaq/sodiumoxide"
+
+[features]
+# Flags the compiled result as unsafe for production code, meaning using it
+# may pose a serious threat to the users' safety, ranging from mild to extreme.
+# unsafe = []
+
+# Warning! This feature has the potential to be extremely dangerous when
+# enabled in production code. It's intended for debugging purposes only.
+#
+# This feature enables the generation of access tokens with very low entropy,
+# which is useful for debugging, as tokens are always garanteed to be generated
+# successfuly, however, in production code, this also means that whatever is
+# generated can be relatively easily guessed by an attacker, at which point they
+# could impersonate the user to whom the token actually belongs.
+#
+# If you're not sure what to leave this as, leave it DISABLED.
+allow-unsafe-tokens = []
